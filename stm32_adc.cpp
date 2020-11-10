@@ -10,10 +10,20 @@
 
 #include "stm32l4xx_hal_gpio.h"
 #include "stm32l4xx_hal_gpio_ex.h"
+#include <algorithm>
 
-static bool initialized = false;
+static ADC_HandleTypeDef mhadc;
 
-ADC_HandleTypeDef hadc;
+static bool minitialized = false;
+
+// Bias of DC offset
+static int32_t mbias;
+
+// Using a differential input or single ended?
+static bool mdifferential;
+
+void HAL_ADC_MspInit(ADC_HandleTypeDef *hadc);
+void HAL_ADC_MspDeInit(ADC_HandleTypeDef *hadc);
 
 void HAL_ADC_MspInit(ADC_HandleTypeDef *hadc){
 
@@ -76,8 +86,10 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef *hadc){
     PORT.Pin = GPIO_PIN_0;
 	HAL_GPIO_Init(GPIOA, &PORT);
 
-    PORT.Pin = GPIO_PIN_1;
-	HAL_GPIO_Init(GPIOA, &PORT);
+    if (mdifferential){
+        PORT.Pin = GPIO_PIN_1;
+        HAL_GPIO_Init(GPIOA, &PORT);
+    }
 
 
     // (#) Optionally, in case of usage of ADC with interruptions:
@@ -87,7 +99,7 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef *hadc){
     //           into the function of corresponding ADC interruption vector
     //           ADCx_IRQHandler().
 
-    HAL_NVIC_EnableIRQ(ADC1_2_IRQn);
+    // HAL_NVIC_EnableIRQ(ADC1_2_IRQn);
 
     // (#) Optionally, in case of usage of DMA:
     //      (++) Configure the DMA (DMA channel, mode normal or circular, ...)
@@ -136,9 +148,16 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef *hadc){
 
 }
 
-void adc_init(){
+void adc_init(int32_t bias, bool differential){
 
-    hadc.Instance = ADC2;
+    if (minitialized){
+        adc_deinit();
+    }
+
+    mbias = bias;
+    mdifferential = differential;
+
+    mhadc.Instance = ADC2;
 
     /////////////////////////////////////////////////////
     // (#) Configure the ADC parameters (resolution, data alignment, ...)
@@ -146,7 +165,7 @@ void adc_init(){
     //     using function HAL_ADC_Init().
 
 
-    hadc.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV1;
+    mhadc.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV1;
             /*!< Select ADC clock source (synchronous clock derived from APB clock or asynchronous clock derived from system clock or PLL (Refer to reference manual for list of clocks available)) and clock prescaler.
                                        This parameter can be a value of @ref ADC_HAL_EC_COMMON_CLOCK_SOURCE.
                                        Note: The ADC clock configuration is common to all ADC instances.
@@ -158,16 +177,16 @@ void adc_init(){
                                        Note: In case of usage of asynchronous clock, the selected clock must be preliminarily enabled at RCC top level.
                                        Note: This parameter can be modified only if all ADC instances are disabled. */
 
-  hadc.Init.Resolution = ADC_RESOLUTION_12B;
+  mhadc.Init.Resolution = ADC_RESOLUTION_12B;
               /*!< Configure the ADC resolution.
                                        This parameter can be a value of @ref ADC_HAL_EC_RESOLUTION */
 
-  hadc.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  mhadc.Init.DataAlign = ADC_DATAALIGN_RIGHT;
                /*!< Specify ADC data alignment in conversion data register (right or left).
                                        Refer to reference manual for alignments formats versus resolutions.
                                        This parameter can be a value of @ref ADC_HAL_EC_DATA_ALIGN */
 
-  hadc.Init.ScanConvMode = ADC_SCAN_DISABLE;
+  mhadc.Init.ScanConvMode = ADC_SCAN_DISABLE;
             /*!< Configure the sequencer of ADC groups regular and injected.
                                        This parameter can be associated to parameter 'DiscontinuousConvMode' to have main sequence subdivided in successive parts.
                                        If disabled: Conversion is performed in single mode (one channel converted, the one defined in rank 1).
@@ -176,11 +195,11 @@ void adc_init(){
                                                     Scan direction is upward: from rank 1 to rank 'n'.
                                        This parameter can be a value of @ref ADC_Scan_mode */
 
-  hadc.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  mhadc.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
             /*!< Specify which EOC (End Of Conversion) flag is used for conversion by polling and interruption: end of unitary conversion or end of sequence conversions.
                                        This parameter can be a value of @ref ADC_EOCSelection. */
 
-  hadc.Init.LowPowerAutoWait = DISABLE;
+  mhadc.Init.LowPowerAutoWait = DISABLE;
    /*!< Select the dynamic low power Auto Delay: new conversion start only when the previous
                                        conversion (for ADC group regular) or previous sequence (for ADC group injected) has been retrieved by user software,
                                        using function HAL_ADC_GetValue() or HAL_ADCEx_InjectedGetValue().
@@ -193,48 +212,48 @@ void adc_init(){
                                              use HAL_ADC_PollForConversion() to ensure that conversion is completed and HAL_ADC_GetValue() to retrieve conversion result and trig another conversion start.
                                              (in case of usage of ADC group injected, use the equivalent functions HAL_ADCExInjected_Start(), HAL_ADCEx_InjectedGetValue(), ...). */
 
-  hadc.Init.ContinuousConvMode = ENABLE;
+  mhadc.Init.ContinuousConvMode = ENABLE;
    /*!< Specify whether the conversion is performed in single mode (one conversion) or continuous mode for ADC group regular,
                                        after the first ADC conversion start trigger occurred (software start or external trigger).
                                        This parameter can be set to ENABLE or DISABLE. */
 
-  hadc.Init.NbrOfConversion = 1;
+  mhadc.Init.NbrOfConversion = 1;
          /*!< Specify the number of ranks that will be converted within the regular group sequencer.
                                        To use the regular group sequencer and convert several ranks, parameter 'ScanConvMode' must be enabled.
                                        This parameter must be a number between Min_Data = 1 and Max_Data = 16.
                                        Note: This parameter must be modified when no conversion is on going on regular group (ADC disabled, or ADC enabled without
                                        continuous mode or external trigger that could launch a conversion). */
 
-  hadc.Init.DiscontinuousConvMode = DISABLE;
+  mhadc.Init.DiscontinuousConvMode = DISABLE;
    /*!< Specify whether the conversions sequence of ADC group regular is performed in Complete-sequence/Discontinuous-sequence
                                        (main sequence subdivided in successive parts).
                                        Discontinuous mode is used only if sequencer is enabled (parameter 'ScanConvMode'). If sequencer is disabled, this parameter is discarded.
                                        Discontinuous mode can be enabled only if continuous mode is disabled. If continuous mode is enabled, this parameter setting is discarded.
                                        This parameter can be set to ENABLE or DISABLE. */
 
-  hadc.Init.NbrOfDiscConversion = 1;  
+  mhadc.Init.NbrOfDiscConversion = 1;  
    /*!< Specifies the number of discontinuous conversions in which the main sequence of ADC group regular (parameter NbrOfConversion) will be subdivided.
                                        If parameter 'DiscontinuousConvMode' is disabled, this parameter is discarded.
                                        This parameter must be a number between Min_Data = 1 and Max_Data = 8. */
 
-  hadc.Init.ExternalTrigConv = ADC_EXTERNALTRIG_T6_TRGO;//ADC_SOFTWARE_START;//ADC_EXTERNALTRIG_T6_TRGO;//ADC_SOFTWARE_START;     
+  mhadc.Init.ExternalTrigConv = ADC_EXTERNALTRIG_T6_TRGO;//ADC_SOFTWARE_START;     
    /*!< Select the external event source used to trigger ADC group regular conversion start.
                                        If set to ADC_SOFTWARE_START, external triggers are disabled and software trigger is used instead.
                                        This parameter can be a value of @ref ADC_regular_external_trigger_source.
                                        Caution: external trigger source is common to all ADC instances. */
 
-  hadc.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE; 
+  mhadc.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE; 
    /*!< Select the external event edge used to trigger ADC group regular conversion start.
                                        If trigger source is set to ADC_SOFTWARE_START, this parameter is discarded.
                                        This parameter can be a value of @ref ADC_regular_external_trigger_edge */
 
-  hadc.Init.DMAContinuousRequests = DISABLE; 
+  mhadc.Init.DMAContinuousRequests = DISABLE; 
   /*!< Specify whether the DMA requests are performed in one shot mode (DMA transfer stops when number of conversions is reached)
                                        or in continuous mode (DMA transfer unlimited, whatever number of conversions).
                                        This parameter can be set to ENABLE or DISABLE.
                                        Note: In continuous mode, DMA must be configured in circular mode. Otherwise an overrun will be triggered when DMA buffer maximum pointer is reached. */
 
-  hadc.Init.Overrun = ADC_OVR_DATA_OVERWRITTEN;  
+  mhadc.Init.Overrun = ADC_OVR_DATA_OVERWRITTEN;  
                /*!< Select the behavior in case of overrun: data overwritten or preserved (default).
                                        This parameter applies to ADC group regular only.
                                        This parameter can be a value of @ref ADC_HAL_EC_REG_OVR_DATA_BEHAVIOR.
@@ -246,22 +265,22 @@ void adc_init(){
                                                overwritten, user can willingly not read all the converted data, this is not considered as an erroneous case.
                                              - Usage with ADC conversion by DMA: Error is reported whatever overrun setting (DMA is expected to process all data from data register). */
 
-  hadc.Init.OversamplingMode = ENABLE;      
+  mhadc.Init.OversamplingMode = ENABLE;      
    /*!< Specify whether the oversampling feature is enabled or disabled.
                                                This parameter can be set to ENABLE or DISABLE.
                                                Note: This parameter can be modified only if there is no conversion is ongoing on ADC groups regular and injected */
 
-  hadc.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_8;                         /*!< Configures the oversampling ratio.
+  mhadc.Init.Oversampling.Ratio = ADC_OVERSAMPLING_RATIO_8;                         /*!< Configures the oversampling ratio.
                                                This parameter can be a value of @ref ADC_HAL_EC_OVS_RATIO */
 
-  hadc.Init.Oversampling.RightBitShift = ADC_RIGHTBITSHIFT_4;                 /*!< Configures the division coefficient for the Oversampler.
+  mhadc.Init.Oversampling.RightBitShift = ADC_RIGHTBITSHIFT_4;                 /*!< Configures the division coefficient for the Oversampler.
                                                This parameter can be a value of @ref ADC_HAL_EC_OVS_SHIFT */
 
-  hadc.Init.Oversampling.TriggeredMode = ADC_TRIGGEREDMODE_SINGLE_TRIGGER;          
+  mhadc.Init.Oversampling.TriggeredMode = ADC_TRIGGEREDMODE_SINGLE_TRIGGER;          
          /*!< Selects the regular triggered oversampling mode.
                                                This parameter can be a value of @ref ADC_HAL_EC_OVS_DISCONT_MODE */
 
-  hadc.Init.Oversampling.OversamplingStopReset = ADC_REGOVERSAMPLING_CONTINUED_MODE;    
+  mhadc.Init.Oversampling.OversamplingStopReset = ADC_REGOVERSAMPLING_CONTINUED_MODE;    
        /*!< Selects the regular oversampling mode.
                                                The oversampling is either temporary stopped or reset upon an injected
                                                sequence interruption.
@@ -281,7 +300,7 @@ void adc_init(){
 
 #endif
 
-    HAL_StatusTypeDef status = HAL_ADC_Init(&hadc);
+    HAL_StatusTypeDef status = HAL_ADC_Init(&mhadc);
 
     if (HAL_OK != status){
         printf("HAL error: %d\n", status);
@@ -320,7 +339,12 @@ void adc_init(){
                                               sampling time constraints must be respected (sampling time can be adjusted in function of ADC clock frequency and sampling time setting)
                                               Refer to device datasheet for timings values. */
 
-  sConfig.SingleDiff = LL_ADC_SINGLE_ENDED;//LL_ADC_DIFFERENTIAL_ENDED;            
+    if (differential){
+        sConfig.SingleDiff = LL_ADC_DIFFERENTIAL_ENDED;            
+    } else {
+        sConfig.SingleDiff = LL_ADC_SINGLE_ENDED;
+    }
+
    /*!< Select single-ended or differential input.
                                         In differential mode: Differential measurement is carried out between the selected channel 'i' (positive input) and channel 'i+1' (negative input).
                                                               Only channel 'i' has to be configured, channel 'i+1' is configured automatically.
@@ -348,7 +372,7 @@ void adc_init(){
 
 
 
-    status = HAL_ADC_ConfigChannel(&hadc, &sConfig);
+    status = HAL_ADC_ConfigChannel(&mhadc, &sConfig);
 
     if (HAL_OK != status){
         printf("configchannel error: %d\n", status);
@@ -365,7 +389,7 @@ void adc_init(){
     // HAL_SYSCFG_VREFBUF_HighImpedanceConfig(SYSCFG_VREFBUF_HIGH_IMPEDANCE_DISABLE);
     // HAL_SYSCFG_EnableVREFBUF();
 
-    status = HAL_ADCEx_Calibration_Start(&hadc, LL_ADC_SINGLE_ENDED);//LL_ADC_DIFFERENTIAL_ENDED);
+    status = HAL_ADCEx_Calibration_Start(&mhadc, differential ? LL_ADC_DIFFERENTIAL_ENDED : LL_ADC_SINGLE_ENDED);
 
     if (status != HAL_OK)
     {
@@ -373,24 +397,26 @@ void adc_init(){
         while(1);
     }
 
-    initialized = true;
+    minitialized = true;
 }
 
 void adc_deinit(){
-    if (!initialized){
+    if (!minitialized){
         return;
     }
 
-    HAL_ADC_DeInit(&hadc);
+    HAL_ADC_DeInit(&mhadc);
+
+    minitialized = false;
 }
 
 void adc_start(){
-    if (!initialized){
+    if (!minitialized){
         printf("adc not yet initialized\n");
         while(1);
     }
 
-    HAL_StatusTypeDef status = HAL_ADC_Start(&hadc);//HAL_ADC_Start(&hadc);
+    HAL_StatusTypeDef status = HAL_ADC_Start(&mhadc);
 
     if (status != HAL_OK){
         printf("hal start error: %d\n", status);
@@ -400,11 +426,11 @@ void adc_start(){
 }
 
 void adc_stop(){
-    if (!initialized){
+    if (!minitialized){
         return;
     }
 
-    HAL_StatusTypeDef status = HAL_ADC_Stop(&hadc);
+    HAL_StatusTypeDef status = HAL_ADC_Stop(&mhadc);
 
     if (status != HAL_OK){
         printf("hal stop error: %d\n", status);
@@ -412,11 +438,11 @@ void adc_stop(){
     }
 }
 
-uint32_t adc_read(){
-    if (!initialized){
+int32_t adc_read(){
+    if (!minitialized){
         return 0;
     }
-    return HAL_ADC_GetValue(&hadc) & 0x0fff;
+    return ((int32_t)(HAL_ADC_GetValue(&mhadc) & 0x0fff)) - mbias;
 
 	// uint16_t value = 0;
 

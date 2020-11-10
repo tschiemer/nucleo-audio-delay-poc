@@ -6,9 +6,14 @@
 #define CHANNEL     DAC_CHANNEL_1
 #define ALIGNMENT   DAC_ALIGN_12B_R
 
-static  bool initialized = false;
+static DAC_HandleTypeDef mhdac;
 
-DAC_HandleTypeDef hdac;
+static  bool minitialized = false;
+
+static uint32_t mbias;
+
+void HAL_DAC_MspInit(DAC_HandleTypeDef *hadc);
+void HAL_DAC_MspDeInit(DAC_HandleTypeDef *hadc);
 
 void HAL_DAC_MspInit(DAC_HandleTypeDef *hadc){
     
@@ -39,7 +44,13 @@ void HAL_DAC_MspDeInit(DAC_HandleTypeDef *hadc){
 
 }
 
-void dac_init(){
+void dac_init(int32_t bias){
+
+    if (minitialized){
+        dac_deinit();
+    }
+
+    mbias = bias;
 
     //   (+) DAC APB clock must be enabled to get write access to DAC
     //       registers using HAL_DAC_Init()
@@ -47,10 +58,10 @@ void dac_init(){
     //   (+) Configure the DAC channel using HAL_DAC_ConfigChannel() function.
     //   (+) Enable the DAC channel using HAL_DAC_Start() or HAL_DAC_Start_DMA() functions.
 
-    hdac.Instance = DAC;
+    mhdac.Instance = DAC;
 
     
-    HAL_StatusTypeDef status = HAL_DAC_Init(&hdac);
+    HAL_StatusTypeDef status = HAL_DAC_Init(&mhdac);
 
     if (status != HAL_OK){
         printf("dac init: %d\n", status);
@@ -113,7 +124,7 @@ void dac_init(){
     /*!< Sample and Hold settings */
 
 
-    status = HAL_DAC_ConfigChannel(&hdac, &sConfig, CHANNEL);
+    status = HAL_DAC_ConfigChannel(&mhdac, &sConfig, CHANNEL);
 
 
     if (status != HAL_OK){
@@ -121,37 +132,39 @@ void dac_init(){
         while(1);
     }
 
-    status = HAL_DACEx_SelfCalibrate(&hdac, &sConfig, CHANNEL);
+    status = HAL_DACEx_SelfCalibrate(&mhdac, &sConfig, CHANNEL);
 
     if (status != HAL_OK){
         printf("dac calib: %d\n", status);
         while(1);
     }
 
-    initialized = true;
+    minitialized = true;
 }
 
 void dac_deinit(){
-    if (!initialized){
+    if (!minitialized){
         return;
     }
 
-    HAL_StatusTypeDef status = HAL_DAC_DeInit(&hdac);
+    HAL_StatusTypeDef status = HAL_DAC_DeInit(&mhdac);
 
     if (status != HAL_OK){
         printf("dac deinit: %d\n", status);
         while(1);
     }
+
+    minitialized = false;
 }
 
 void dac_start(){
     
-    if (!initialized){
+    if (!minitialized){
         printf("dac not yet initialized\n");
         while(1);
     }
 
-    HAL_StatusTypeDef status = HAL_DAC_Start(&hdac, CHANNEL);
+    HAL_StatusTypeDef status = HAL_DAC_Start(&mhdac, CHANNEL);
 
     if (status != HAL_OK){
         printf("dac start: %d\n", status);
@@ -161,11 +174,11 @@ void dac_start(){
 
 void dac_stop(){
 
-    if (!initialized){
+    if (!minitialized){
         return;
     }
 
-    HAL_StatusTypeDef status = HAL_DAC_Stop(&hdac, CHANNEL);
+    HAL_StatusTypeDef status = HAL_DAC_Stop(&mhdac, CHANNEL);
 
     if (status != HAL_OK){
         printf("dac stop: %d\n", status);
@@ -173,17 +186,21 @@ void dac_stop(){
     }
 }
 
-void dac_write(uint32_t sample){
+void dac_write(int32_t sample){
 
-    if (!initialized){
+    if (!minitialized){
         return;
     }
 
-    HAL_StatusTypeDef status = HAL_DAC_SetValue(&hdac, CHANNEL, ALIGNMENT, sample);
+    int32_t biased_sample = (sample + mbias);
+
+
+    HAL_StatusTypeDef status = HAL_DAC_SetValue(&mhdac, CHANNEL, ALIGNMENT, biased_sample);
 
 
     if (status != HAL_OK){
         // printf("dac write: %d\n", status);
         while(1);
     }
+
 }
