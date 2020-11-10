@@ -1,0 +1,15 @@
+{
+    "target_overrides": {
+        "*": {
+            "platform.stdio-convert-newlines": true,
+            "target.features_add": ["STORAGE"],
+            "target.components_add": ["SD"]
+        },
+        "NUCLEO_F303K8": {
+            "sd.SPI_MOSI": "SPI_MOSI",
+            "sd.SPI_MISO": "SPI_MISO",
+            "sd.SPI_CLK":  "SPI_SCK",
+            "sd.SPI_CS":   "SPI_CS"
+        }
+    }
+}
