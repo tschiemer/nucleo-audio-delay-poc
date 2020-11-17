@@ -2,25 +2,32 @@
 
 #include "stm32_sdio.h"
 
+#include "stm32l476xx.h"
+#include "stm32l4xx_hal_dma.h"
 #include "stm32l4xx_hal_rcc.h"
 #include "stm32l4xx_hal_rcc_ex.h"
 
 #include "stm32l4xx_hal_gpio.h"
 #include "stm32l4xx_hal_gpio_ex.h"
 
+#include "stm32l4xx_hal_sd.h"
 #include "stm32l4xx_ll_sdmmc.h"
 
+// https://github.com/akospasztor/stm32-bootloader/blob/master/projects/STM32L496-CustomHw/source/bsp_driver_sd.c
+
+#define SDMMC_IRQ_PRIO  1
+#define SD_DMA_IRQ_PRIO 2
 
 using namespace std::chrono;
 
-#define ADDRESS 0
-#define BLOCK_N 1
-
-// SDBlockDevice sd(MBED_CONF_SD_SPI_MOSI, MBED_CONF_SD_SPI_MISO, MBED_CONF_SD_SPI_CLK, MBED_CONF_SD_SPI_CS);
-uint8_t blocks[512 * BLOCK_N] = "Hello World!\n";
 
 
-SD_HandleTypeDef hsd;
+
+static SD_HandleTypeDef hsd;
+
+// static DMA_HandleTypeDef hdmatx;
+// static DMA_HandleTypeDef hdmarx;
+
 
 HAL_SD_CardCIDTypeDef pCID;
 HAL_SD_CardCSDTypeDef pCSD;
@@ -32,31 +39,6 @@ HAL_SD_CardInfoTypeDef pCardInfo;
                                 while(1); \
                             }
 
-
-// #define SDMMC_CLOCK_EDGE_RISING               ((uint32_t)0x00000000U)
-// #define SDMMC_CLOCK_EDGE_FALLING              SDMMC_CLKCR_NEGEDGE
-
-// #define SDMMC_CLOCK_BYPASS_DISABLE             ((uint32_t)0x00000000U)
-// #define SDMMC_CLOCK_BYPASS_ENABLE              SDMMC_CLKCR_BYPASS
-
-// #define SDMMC_CLOCK_POWER_SAVE_DISABLE         ((uint32_t)0x00000000U)
-// #define SDMMC_CLOCK_POWER_SAVE_ENABLE          SDMMC_CLKCR_PWRSAV
-
-// #define SDMMC_BUS_WIDE_1B                      ((uint32_t)0x00000000U)
-// #define SDMMC_BUS_WIDE_4B                      SDMMC_CLKCR_WIDBUS_0
-// #define SDMMC_BUS_WIDE_8B                      SDMMC_CLKCR_WIDBUS_1
-
-// #define SDMMC_SPEED_MODE_AUTO                  ((uint32_t)0x00000000U)
-// #define SDMMC_SPEED_MODE_DEFAULT               ((uint32_t)0x00000001U)
-// #define SDMMC_SPEED_MODE_HIGH                  ((uint32_t)0x00000002U)
-// #define SDMMC_SPEED_MODE_ULTRA                 ((uint32_t)0x00000003U)
-// #define SDMMC_SPEED_MODE_DDR                   ((uint32_t)0x00000004U)
-
-// #define SDMMC_HARDWARE_FLOW_CONTROL_DISABLE    ((uint32_t)0x00000000U)
-// #define SDMMC_HARDWARE_FLOW_CONTROL_ENABLE     SDMMC_CLKCR_HWFC_EN
-
-// #define SDMMC_TRANSCEIVER_DISABLE    ((uint32_t)0x00000000U)
-// #define SDMMC_TRANSCEIVER_ENABLE     ((uint32_t)0x00000001U)
 
 /**
 * @brief This function handles SDIO global interrupt.
@@ -97,6 +79,115 @@ HAL_SD_CardInfoTypeDef pCardInfo;
 // {
 //   HAL_DMA_IRQHandler(hsd.hdmatx);
 // }
+
+/**
+ * @brief DMA2 Channel5 ISR
+ * @note  SDMMC DMA Tx, Rx
+ */
+// void DMA2_Channel5_IRQHandler(void)
+// {
+//     if((hsd.Context == (SD_CONTEXT_DMA | SD_CONTEXT_READ_SINGLE_BLOCK)) ||
+//        (hsd.Context == (SD_CONTEXT_DMA | SD_CONTEXT_READ_MULTIPLE_BLOCK)))
+//     {
+//         HAL_DMA_IRQHandler(hsd.hdmarx);
+//     }
+//     else if((hsd.Context ==
+//              (SD_CONTEXT_DMA | SD_CONTEXT_WRITE_SINGLE_BLOCK)) ||
+//             (hsd.Context ==
+//              (SD_CONTEXT_DMA | SD_CONTEXT_WRITE_MULTIPLE_BLOCK)))
+//     {
+//         HAL_DMA_IRQHandler(hsd.hdmatx);
+//     }
+
+// }
+
+/**
+ * @brief SDMMC ISR
+ */
+// void SDMMC1_IRQHandler(void)
+// {
+//     HAL_SD_IRQHandler(&hsd);
+// }
+
+/**
+ * @brief Configure the DMA to receive data from the SD card
+ * @retval
+ *  HAL_ERROR or HAL_OK
+ */
+static HAL_StatusTypeDef SD_DMAConfigRx(SD_HandleTypeDef* hsd)
+{
+    static DMA_HandleTypeDef hdma_rx;
+    HAL_StatusTypeDef        status = HAL_ERROR;
+
+    /* Configure DMA Rx parameters */
+    hdma_rx.Instance                 = DMA2_Channel5;
+    hdma_rx.Init.Request             = DMA_REQUEST_7;
+    hdma_rx.Init.Direction           = DMA_PERIPH_TO_MEMORY;
+    hdma_rx.Init.PeriphInc           = DMA_PINC_DISABLE;
+    hdma_rx.Init.MemInc              = DMA_MINC_ENABLE;
+    hdma_rx.Init.PeriphDataAlignment = DMA_PDATAALIGN_WORD;
+    hdma_rx.Init.MemDataAlignment    = DMA_MDATAALIGN_WORD;
+    hdma_rx.Init.Priority            = DMA_PRIORITY_VERY_HIGH;
+
+    /* Associate the DMA handle */
+    __HAL_LINKDMA(hsd, hdmarx, hdma_rx);
+
+    /* Stop any ongoing transfer and reset the state */
+    HAL_DMA_Abort(&hdma_rx);
+
+    /* Deinitialize the Channel for new transfer */
+    HAL_DMA_DeInit(&hdma_rx);
+
+    /* Configure the DMA Channel */
+    status = HAL_DMA_Init(&hdma_rx);
+
+    /* NVIC configuration for DMA transfer complete interrupt */
+    // HAL_NVIC_SetPriority(DMA2_Channel5_IRQn, SD_DMA_IRQ_PRIO, 0);
+    // NVIC_SetVector(DMA2_Channel5_IRQn, (uint32_t) &DMA2_Channel5_IRQHandler);
+    // HAL_NVIC_EnableIRQ(DMA2_Channel5_IRQn);
+
+    return status;
+}
+
+/**
+ * @brief Configure the DMA to transmit data to the SD card
+ * @retval
+ *  HAL_ERROR or HAL_OK
+ */
+static HAL_StatusTypeDef SD_DMAConfigTx(SD_HandleTypeDef* hsd)
+{
+    static DMA_HandleTypeDef hdma_tx;
+    HAL_StatusTypeDef        status;
+
+    /* Configure DMA Tx parameters */
+    hdma_tx.Instance                 = DMA2_Channel5;
+    hdma_tx.Init.Request             = DMA_REQUEST_7;
+    hdma_tx.Init.Direction           = DMA_MEMORY_TO_PERIPH;
+    hdma_tx.Init.PeriphInc           = DMA_PINC_DISABLE;
+    hdma_tx.Init.MemInc              = DMA_MINC_ENABLE;
+    hdma_tx.Init.PeriphDataAlignment = DMA_PDATAALIGN_WORD;
+    hdma_tx.Init.MemDataAlignment    = DMA_MDATAALIGN_WORD;
+    hdma_tx.Init.Priority            = DMA_PRIORITY_VERY_HIGH;
+
+    /* Associate the DMA handle */
+    __HAL_LINKDMA(hsd, hdmatx, hdma_tx);
+
+    /* Stop any ongoing transfer and reset the state */
+    HAL_DMA_Abort(&hdma_tx);
+
+    /* Deinitialize the Channel for new transfer */
+    HAL_DMA_DeInit(&hdma_tx);
+
+    /* Configure the DMA Channel */
+    status = HAL_DMA_Init(&hdma_tx);
+
+    /* NVIC configuration for DMA transfer complete interrupt */
+    // HAL_NVIC_SetPriority(DMA2_Channel5_IRQn, SD_DMA_IRQ_PRIO, 0);
+    // NVIC_SetVector(DMA2_Channel5_IRQn, (uint32_t) &DMA2_Channel5_IRQHandler);
+    // HAL_NVIC_EnableIRQ(DMA2_Channel5_IRQn);
+
+    return status;
+}
 
 // (#)Initialize the SDMMC low level resources by implementing the HAL_SD_MspInit() API:
 void HAL_SD_MspInit(SD_HandleTypeDef *hsd)
@@ -202,9 +293,21 @@ void HAL_SD_MspInit(SD_HandleTypeDef *hsd)
 
     // HAL_NVIC_SetPriority(SDMMC1_IRQn, 5, 0);
     // NVIC_SetVector(SDMMC1_IRQn, (uint32_t) &_SDIO_IRQHandler);
-    // HAL_NVIC_EnableIRQ(SDMMC1_IRQn);
+    // // HAL_NVIC_EnableIRQ(SDMMC1_IRQn);
 
     // __SDMMC_DMA_ENABLE(SDMMC1);
+
+    // Configure and enable DMA IRQ Channel
+    // SDIO IRQ should have a higher priority than DMA IRQ because it needs to
+    // preempt the DMA irq handler to set a flag indicating the end of transfer.
+    // HAL_NVIC_SetPriority(SDIO_IRQn, IRQ_PRI_SDIO, IRQ_SUBPRI_SDIO);
+    // HAL_NVIC_EnableIRQ(SDIO_IRQn);
+
+    // HAL_NVIC_SetPriority(SDMMC1_IRQn, SDMMC_IRQ_PRIO, 0);
+    // NVIC_SetVector(SDMMC1_IRQn, (uint32_t) &SDMMC1_IRQHandler);
+    // HAL_NVIC_EnableIRQ(SDMMC1_IRQn);
+
+    // HAL_NVIC_DisableIRQ(SDMMC1_IRQn);
 
     // HAL_NVIC_EnableIRQ(DMA2_Channel5_IRQn);
 
@@ -240,7 +343,7 @@ void HAL_SD_MspDeInit(SD_HandleTypeDef *hsd)
 
 HAL_StatusTypeDef sd_init(){
 
-    printf("sd_init(): start\n");
+    // printf("sd_init(): start\n");
 
     hsd.Instance = SDMMC1;
 //   uint32_t ClockEdge;            /*!< Specifies the clock transition on which the bit capture is made.
@@ -284,20 +387,125 @@ HAL_StatusTypeDef sd_init(){
     // SDMMC1->DLEN = 0;
     // SDMMC1->DCTRL = 0;
 
-    HAL_StatusTypeDef state = HAL_SD_Init(&hsd);
+    // hsd.hdmatx = &hdmatx;
+    // hsd.hdmarx = &hdmarx;
+
+    HAL_StatusTypeDef status = HAL_SD_Init(&hsd);
 
     // printf("init = %d\n", state);
 
     // check_error(state, "Init")
 
-    if (state == HAL_OK){
+    if (status == HAL_OK){
         check_error(HAL_SD_ConfigWideBusOperation(&hsd, SDMMC_BUS_WIDE_4B), "Wide");
         // check_error(HAL_SD_ConfigSpeedBusOperation(&hsd, SDMMC_SPEED_MODE_HIGH), "Speed");
     }
 
-    printf("sd_init(): exit\n");
 
-    return state;
+
+    // __HAL_RCC_DMA2_CLK_ENABLE();
+
+
+//     hdmatx.Instance = DMA2_Channel4;
+
+    
+//     hdmatx.Init.Request = DMA_REQUEST_0;                  
+//      /*!< Specifies the request selected for the specified channel.
+//                                            This parameter can be a value of @ref DMA_request */
+
+//     hdmatx.Init.Direction = DMA_MEMORY_TO_PERIPH;                
+//    /*!< Specifies if the data will be transferred from memory to peripheral,
+//                                            from memory to memory or from peripheral to memory.
+//                                            This parameter can be a value of @ref DMA_Data_transfer_direction */
+
+//     hdmatx.Init.PeriphInc = DMA_PINC_DISABLE;                 
+//   /*!< Specifies whether the Peripheral address register should be incremented or not.
+//                                            This parameter can be a value of @ref DMA_Peripheral_incremented_mode */
+
+//     hdmatx.Init.MemInc = DMA_MINC_DISABLE;                   
+//    /*!< Specifies whether the memory address register should be incremented or not.
+//                                            This parameter can be a value of @ref DMA_Memory_incremented_mode */
+
+//     hdmatx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;      
+//    /*!< Specifies the Peripheral data width.
+//                                            This parameter can be a value of @ref DMA_Peripheral_data_size */
+
+//     hdmatx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;         
+//    /*!< Specifies the Memory data width.
+//                                            This parameter can be a value of @ref DMA_Memory_data_size */
+
+//     hdmatx.Init.Mode = DMA_NORMAL;                     
+//    /*!< Specifies the operation mode of the DMAy Channelx.
+//                                            This parameter can be a value of @ref DMA_mode
+//                                            @note The circular buffer mode cannot be used if the memory-to-memory
+//                                                  data transfer is configured on the selected Channel */
+
+//     hdmatx.Init.Priority = DMA_PRIORITY_HIGH;                 
+//    /*!< Specifies the software priority for the DMAy Channelx.
+//                                            This parameter can be a value of @ref DMA_Priority_level */
+
+//     status = HAL_DMA_Init(&hdmatx);
+
+//     if (status != HAL_OK){
+//         printf("dma init err: %d\n", status);
+//         while(1);
+//     }
+
+
+
+
+//     hdmarx.Instance = DMA2_Channel5;
+
+    
+//     hdmarx.Init.Request = DMA_REQUEST_1;                  
+//      /*!< Specifies the request selected for the specified channel.
+//                                            This parameter can be a value of @ref DMA_request */
+
+//     hdmarx.Init.Direction = DMA_PERIPH_TO_MEMORY;                
+//    /*!< Specifies if the data will be transferred from memory to peripheral,
+//                                            from memory to memory or from peripheral to memory.
+//                                            This parameter can be a value of @ref DMA_Data_transfer_direction */
+
+//     hdmarx.Init.PeriphInc = DMA_PINC_DISABLE;                 
+//   /*!< Specifies whether the Peripheral address register should be incremented or not.
+//                                            This parameter can be a value of @ref DMA_Peripheral_incremented_mode */
+
+//     hdmarx.Init.MemInc = DMA_MINC_DISABLE;                   
+//    /*!< Specifies whether the memory address register should be incremented or not.
+//                                            This parameter can be a value of @ref DMA_Memory_incremented_mode */
+
+//     hdmarx.Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;      
+//    /*!< Specifies the Peripheral data width.
+//                                            This parameter can be a value of @ref DMA_Peripheral_data_size */
+
+//     hdmarx.Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;         
+//    /*!< Specifies the Memory data width.
+//                                            This parameter can be a value of @ref DMA_Memory_data_size */
+
+//     hdmarx.Init.Mode = DMA_NORMAL;                     
+//    /*!< Specifies the operation mode of the DMAy Channelx.
+//                                            This parameter can be a value of @ref DMA_mode
+//                                            @note The circular buffer mode cannot be used if the memory-to-memory
+//                                                  data transfer is configured on the selected Channel */
+
+//     hdmarx.Init.Priority = DMA_PRIORITY_HIGH;                 
+//    /*!< Specifies the software priority for the DMAy Channelx.
+//                                            This parameter can be a value of @ref DMA_Priority_level */
+
+//     status = HAL_DMA_Init(&hdmarx);
+
+//     if (status != HAL_OK){
+//         printf("dma init err: %d\n", status);
+//         while(1);
+//     }
+
+
+    // HAL_NVIC_SetPriority(DMA2_Channel4_IRQn, 0, 0);
+    // HAL_NVIC_EnableIRQ(DMA2_Channel4_IRQn);
+
+    // printf("sd_init(): exit\n");
+
+    return status;
 }
 
 void sd_deinit(){
@@ -364,56 +572,112 @@ void sd_stat(){
 
 }
 
-void sd_access(){
+bool sd_write(uint32_t address, uint8_t * data){
 
-// HAL_StatusTypeDef HAL_SD_ReadBlocks     (&hsd, uint8_t *pData, uint32_t BlockAdd, uint32_t NumberOfBlocks, uint32_t Timeout);
-// HAL_StatusTypeDef HAL_SD_WriteBlocks    (&hsd, uint8_t *pData, uint32_t BlockAdd, uint32_t NumberOfBlocks, uint32_t Timeout);
-// HAL_StatusTypeDef HAL_SD_Erase          (&hsd, uint32_t BlockStartAdd, uint32_t BlockEndAdd);
+    HAL_StatusTypeDef status = HAL_OK;
+
+    // /* Invalidate the dma rx handle*/
+    // hsd.hdmarx = NULL;
+
+    // /* Prepare the dma channel for a read operation */
+    // status = SD_DMAConfigTx(&hsd);
+    // if (status != HAL_OK)  printf("status1 = %d\n", status);
+
+    // if (status == HAL_OK){
+    //     status = HAL_SD_WriteBlocks_DMA(&hsd, data, address, 1);
+    // }
+    status = HAL_SD_WriteBlocks(&hsd, data, address, 1, 150);
+
+    if (status != HAL_OK) printf("status2 = %d\n", status);
+
+    
+
+    return status == HAL_OK;
 }
 
-void sd_test(Timer &t){
+bool sd_read(uint32_t address, uint8_t * data){
 
-    HAL_StatusTypeDef state = sd_init();
+    // if (hsd.State == )
 
-    if (state != HAL_OK){
-        printf("FAIL!\n");
+    HAL_StatusTypeDef status = HAL_OK;
+
+    // /* Invalidate the dma tx handle*/
+    // hsd.hdmatx = NULL;
+
+    // /* Prepare the dma channel for a read operation */
+    // status  = SD_DMAConfigRx(&hsd);
+    // if (status != HAL_OK) printf("status1 = %d\n", status);
+
+    // if (status == HAL_OK){
+    //     status = HAL_SD_ReadBlocks_DMA(&hsd, data, address, 1);
+    //     if (status != HAL_OK) printf("status2 = %d\n", status);
+    // }
+    status = HAL_SD_ReadBlocks(&hsd, data, address, 1, 150);
+
+    if (status != HAL_OK) printf("status2 = %d\n", status);
+
+
+    return status == HAL_OK;
+}
+
+void sd_erase(uint32_t from, uint32_t to){
+    if (HAL_SD_Erase(&hsd, from, to) != HAL_OK){
+        printf("Erase err\n");
         while(1);
     }
-
-    // HAL_StatusTypeDef state = HAL_ERROR;
-    // for (int i = 0; i < 1 && state != HAL_OK; i++){
-    //     state = sd_init();
-    //     if (state != HAL_OK){
-    //         wait_us(100);
-    //     }
-    // }
-    // if (state != HAL_OK){
-    //     printf("FAIL!\n");
-    //     while(1);
-    // }
-
-    wait_us(1000);
-
-    // sd_stat();
-
-    t.start();
-    HAL_SD_WriteBlocks(&hsd, blocks, ADDRESS, BLOCK_N, 1000000);
-    t.stop();
-    printf("The time taken was %llu usec\n", duration_cast<microseconds>(t.elapsed_time()).count());
-
-    t.reset();
-
-    t.start();
-    HAL_SD_ReadBlocks(&hsd, blocks, ADDRESS, BLOCK_N, 1000000);
-    t.stop();
-    printf("The time taken was %llu usec\n", duration_cast<microseconds>(t.elapsed_time()).count());
-
-    printf("%s\n", blocks);
-
-    while(1){
-
-
-    }
-
-    sd_deinit();
 }
+
+
+// void sd_access(){
+
+// // HAL_StatusTypeDef HAL_SD_ReadBlocks     (&hsd, uint8_t *pData, uint32_t BlockAdd, uint32_t NumberOfBlocks, uint32_t Timeout);
+// // HAL_StatusTypeDef HAL_SD_WriteBlocks    (&hsd, uint8_t *pData, uint32_t BlockAdd, uint32_t NumberOfBlocks, uint32_t Timeout);
+// // HAL_StatusTypeDef HAL_SD_Erase          (&hsd, uint32_t BlockStartAdd, uint32_t BlockEndAdd);
+// }
+
+// void sd_test(Timer &t){
+
+//     HAL_StatusTypeDef state = sd_init();
+
+//     if (state != HAL_OK){
+//         printf("FAIL!\n");
+//         while(1);
+//     }
+
+//     // HAL_StatusTypeDef state = HAL_ERROR;
+//     // for (int i = 0; i < 1 && state != HAL_OK; i++){
+//     //     state = sd_init();
+//     //     if (state != HAL_OK){
+//     //         wait_us(100);
+//     //     }
+//     // }
+//     // if (state != HAL_OK){
+//     //     printf("FAIL!\n");
+//     //     while(1);
+//     // }
+
+//     wait_us(1000);
+
+//     // sd_stat();
+
+//     t.start();
+//     HAL_SD_WriteBlocks(&hsd, blocks, ADDRESS, BLOCK_N, 1000000);
+//     t.stop();
+//     printf("The time taken was %llu usec\n", duration_cast<microseconds>(t.elapsed_time()).count());
+
+//     t.reset();
+
+//     t.start();
+//     HAL_SD_ReadBlocks(&hsd, blocks, ADDRESS, BLOCK_N, 1000000);
+//     t.stop();
+//     printf("The time taken was %llu usec\n", duration_cast<microseconds>(t.elapsed_time()).count());
+
+//     printf("%s\n", blocks);
+
+//     while(1){
+
+
+//     }
+
+//     sd_deinit();
+// }
