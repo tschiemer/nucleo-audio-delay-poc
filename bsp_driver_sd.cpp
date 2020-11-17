@@ -35,7 +35,7 @@ void Error_Handler(void);
  * @brief DMA2 Channel5 ISR
  * @note  SDMMC DMA Tx, Rx
  */
-void __DMA2_Channel5_IRQHandler(void)
+__weak void __DMA2_Channel5_IRQHandler(void)
 {
 
         // led = true;
@@ -59,7 +59,7 @@ void __DMA2_Channel5_IRQHandler(void)
 /**
  * @brief SDMMC ISR
  */
-void __SDMMC1_IRQHandler(void)
+__weak void __SDMMC1_IRQHandler(void)
 {
     HAL_SD_IRQHandler(&hsd1);
 }

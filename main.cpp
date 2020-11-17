@@ -8,8 +8,8 @@
 #include "stm32_adc.h"
 #include "stm32_dac.h"
 
-//#include "stm32_sdio.h"
-#include "bsp_driver_sd.h"
+#include "stm32_sdio.h"
+//#include "bsp_driver_sd.h"
 
 #include "stm32l476xx.h"
 
@@ -18,7 +18,7 @@
 
 
 
-#define SAMPLERATE_HZ       (48000>>1)
+#define SAMPLERATE_HZ       (48000>>0)
 
 #define ADC_BIAS            687
 #define ADC_DIFFERENTIAL    false
@@ -28,6 +28,7 @@
 
 #define DELAY_MAX_MSEC      1000
 
+Timer stopwatch;
 
 DigitalOut led(LED1);
 
@@ -73,7 +74,8 @@ void delay_init(){
     sDelay.outempty = false;
     memset((uint8_t*)sDelay.out[0], 0, 1024);
 
-    if (BSP_SD_Init() != HAL_OK){
+    // if (BSP_SD_Init() != HAL_OK){
+    if (sd_init() != HAL_OK){
         printf("SD init err\n");
         while(1);
     }
@@ -89,7 +91,8 @@ void delay_init(){
     printf("nblocks = %d\n", sDelay.nblocks);
 
     // erase used blocks on SD
-    BSP_SD_Erase(0, sDelay.nblocks);
+    // BSP_SD_Erase(0, sDelay.nblocks);
+    sd_erase(0, sDelay.nblocks);
 
 }
 
@@ -102,10 +105,10 @@ inline void delay_push(int32_t sample){
         sDelay.ini = 0;
         sDelay.inb = (sDelay.inb + 1) % 2;
 
-        // if (sDelay.infull){
-        //     led = 1;
-        //     while(1);
-        // }
+        if (sDelay.infull){
+            led = !led;
+            // while(1);
+        }
 
         sDelay.infull = true;
     }
@@ -128,10 +131,12 @@ inline int32_t delay_pull(){
         sDelay.outi = 0;
         sDelay.outb = (sDelay.outb + 1) % 2;
 
-        // if (sDelay.outempty){
+        if (sDelay.outempty){
         //     led = 1;
+
+            led = !led;
         //     while(1);
-        // }
+        }
 
         sDelay.outempty = true;
     }
@@ -141,6 +146,9 @@ inline int32_t delay_pull(){
 
 void delay_loop(){
     if (sd_busy == true){
+        return;
+    }
+    if (sd_ready() == false){
         return;
     }
 
@@ -159,11 +167,17 @@ void delay_loop(){
         //     printf("\n");
         // }
         // while(1);
-
-         if (BSP_SD_WriteBlocks((uint8_t*)sDelay.in[(sDelay.inb + 1) % 2], sDelay.inblock, 1, SD_DATATIMEOUT) != SD_TRANSFER_OK){
+        stopwatch.reset();
+        stopwatch.start();
+        if (!sd_write(sDelay.inblock, (uint8_t*)sDelay.in[(sDelay.inb + 1) % 2], 1)){
+        //  if (BSP_SD_WriteBlocks((uint8_t*)sDelay.in[(sDelay.inb + 1) % 2], sDelay.inblock, 1, SD_DATATIMEOUT) != SD_TRANSFER_OK){
         //if (BSP_SD_WriteBlocks_DMA((uint8_t*)&sDelay.in[(sDelay.inb + 1) % 2][0], sDelay.inblock, 1) != SD_TRANSFER_OK){
+            stopwatch.stop();
             return;
         }
+        stopwatch.stop();
+
+        // printf("w %d\n", stopwatch)//
 
         // sd_busy = true;
         sDelay.infull = false;
@@ -179,6 +193,7 @@ void delay_loop(){
         return;
     }
     else if (sDelay.outempty){
+        // return;
     // else {
         // if (sDelay.outblock == 1){
         //     printf("o ");
@@ -192,7 +207,8 @@ void delay_loop(){
         //     printf("\n");
         // }
 
-        if (BSP_SD_ReadBlocks((uint8_t*)sDelay.out[(sDelay.outb + 1) % 2], sDelay.outblock, 1, SD_DATATIMEOUT) != SD_TRANSFER_OK){
+        if (!sd_read(sDelay.outblock, (uint8_t*)sDelay.out[(sDelay.outb + 1) % 2], 1)){
+        // if (BSP_SD_ReadBlocks((uint8_t*)sDelay.out[(sDelay.outb + 1) % 2], sDelay.outblock, 1, SD_DATATIMEOUT) != SD_TRANSFER_OK){
         // if (BSP_SD_ReadBlocks_DMA((uint8_t*)&sDelay.out[(sDelay.outb + 1) % 2][0], sDelay.outblock, 1) != SD_TRANSFER_OK){
             return;
         }
@@ -288,46 +304,59 @@ void BSP_SD_ReadCpltCallback(void){
 // main() runs in its own thread in the OS
 int main()
 {
-    printf("\nRESTART delayer.\n");
+    printf("\n===== RESTART delayer =====\n");
 
     // clock_init();
 
     delay_init();
     
-    //sd_stat();
+    // sd_stat();
 
-    // wait_us(250000);
+    wait_us(1000);
 
     // uint16_t block[1024];
-    // for(int i = 0; i < 1024; i++){
+    // uint8_t *u8 = (uint8_t*)block;
+    // for(int i = 0; i < 512; i++){
     //     block[i] = i;
     // }
 
-    // sd_busy = true;
-    // int s = BSP_SD_WriteBlocks((uint32_t*)block, 0, 1, SD_DATATIMEOUT);
+    // // sd_busy = true;
+    // // int s = BSP_SD_WriteBlocks((uint32_t*)block, 0, 1, SD_DATATIMEOUT);
+    // int s = 1;
+    
+    // s = sd_write(0, u8, 1);
 
     // printf("status = %d\n", s);
 
-    // led = 1;
-    // // while(sd_busy);
+    // // while(!s);
+
+    // // led = 1;
+    // // // while(sd_busy);
 
     // printf("written\n");
 
-    // led = 0;
+    // // led = 0;
 
     // memset(block, 0, sizeof(block));
 
-    // // sd_busy = true;
-    // s = BSP_SD_ReadBlocks((uint32_t*)block, 0, 1, SD_DATATIMEOUT);
+    // wait_us(1000);
+
+    // // // sd_busy = true;
+    // // s = BSP_SD_ReadBlocks((uint32_t*)block, 0, 1, SD_DATATIMEOUT);
+    // s = sd_read(0, (uint8_t*)&block[0], 1);
+    
 
     // printf("status = %d\n", s);
+    // while(!s);
 
-    // // while(sd_busy);
-
+    // // // while(sd_busy);
+    // // *u16 = (uint16_t*)block;
     // for(int i = 0; i < 512; i++){
     //     printf("%d ", block[i]);
     // }
     // printf("\n");
+
+    // while(1);
 
     // int I = 1;
 

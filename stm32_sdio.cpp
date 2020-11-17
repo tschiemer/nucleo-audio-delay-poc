@@ -3,6 +3,7 @@
 #include "stm32_sdio.h"
 
 #include "stm32l476xx.h"
+#include "stm32l4xx_hal_def.h"
 #include "stm32l4xx_hal_dma.h"
 #include "stm32l4xx_hal_rcc.h"
 #include "stm32l4xx_hal_rcc_ex.h"
@@ -104,10 +105,10 @@ HAL_SD_CardInfoTypeDef pCardInfo;
 /**
  * @brief SDMMC ISR
  */
-// void SDMMC1_IRQHandler(void)
-// {
-//     HAL_SD_IRQHandler(&hsd);
-// }
+void __SDMMC1_IRQHandler(void)
+{
+    HAL_SD_IRQHandler(&hsd);
+}
 
 /**
  * @brief Configure the DMA to receive data from the SD card
@@ -204,7 +205,7 @@ void HAL_SD_MspInit(SD_HandleTypeDef *hsd)
     HAL_RCCEx_GetPeriphCLKConfig(&RCC_PeriphClkInit);
 
     RCC_PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_SDMMC1;
-    RCC_PeriphClkInit.Sdmmc1ClockSelection = RCC_SDMMC1CLKSOURCE_MSI;
+    RCC_PeriphClkInit.Sdmmc1ClockSelection = RCC_SDMMC1CLKSOURCE_MSI;//RCC_SDMMC1CLKSOURCE_PLLSAI1;//RCC_SDMMC1CLKSOURCE_MSI;
     // RCC_PeriphClkInit.PLLSAI1.PLLSAI1Source = RCC_PLLSOURCE_HSI;
     // RCC_PeriphClkInit.PLLSAI1.PLLSAI1M = 1;
     // RCC_PeriphClkInit.PLLSAI1.PLLSAI1N = 12;
@@ -303,9 +304,9 @@ void HAL_SD_MspInit(SD_HandleTypeDef *hsd)
     // HAL_NVIC_SetPriority(SDIO_IRQn, IRQ_PRI_SDIO, IRQ_SUBPRI_SDIO);
     // HAL_NVIC_EnableIRQ(SDIO_IRQn);
 
-    // HAL_NVIC_SetPriority(SDMMC1_IRQn, SDMMC_IRQ_PRIO, 0);
-    // NVIC_SetVector(SDMMC1_IRQn, (uint32_t) &SDMMC1_IRQHandler);
-    // HAL_NVIC_EnableIRQ(SDMMC1_IRQn);
+    HAL_NVIC_SetPriority(SDMMC1_IRQn, SDMMC_IRQ_PRIO, 0);
+    NVIC_SetVector(SDMMC1_IRQn, (uint32_t) &__SDMMC1_IRQHandler);
+    HAL_NVIC_EnableIRQ(SDMMC1_IRQn);
 
     // HAL_NVIC_DisableIRQ(SDMMC1_IRQn);
 
@@ -370,12 +371,12 @@ HAL_StatusTypeDef sd_init(){
 
 //   uint32_t HardwareFlowControl;  /*!< Specifies whether the SDMMC hardware flow control is enabled or disabled.
 //                                       This parameter can be a value of @ref SDMMC_LL_Hardware_Flow_Control      */
-    hsd.Init.HardwareFlowControl = SDMMC_HARDWARE_FLOW_CONTROL_DISABLE;
+    hsd.Init.HardwareFlowControl = SDMMC_HARDWARE_FLOW_CONTROL_ENABLE;//SDMMC_HARDWARE_FLOW_CONTROL_DISABLE;
 
 
 //   uint32_t ClockDiv;             /*!< Specifies the clock frequency of the SDMMC controller.
 //                                       This parameter can be a value between Min_Data = 0 and Max_Data = 1023   */
-    hsd.Init.ClockDiv = 0;
+    hsd.Init.ClockDiv = 0;//4;//SDMMC_INIT_CLK_DIV >> 4;
 
 #if defined(STM32L4R5xx) || defined(STM32L4R7xx) || defined(STM32L4R9xx) || defined(STM32L4S5xx) || defined(STM32L4S7xx) || defined(STM32L4S9xx)
 //   uint32_t Transceiver;          /*!< Specifies whether external Transceiver is enabled or disabled.
@@ -513,7 +514,7 @@ void sd_deinit(){
 // void              HAL_SD_MspDeInit(&hsd);
 }
 
-void sd_stat(){
+void sd_info(){
 
 // HAL_StatusTypeDef       HAL_SD_SendSDStatus (&hsd, uint32_t *pSDstatus);
 
@@ -572,7 +573,22 @@ void sd_stat(){
 
 }
 
-bool sd_write(uint32_t address, uint8_t * data){
+
+//   HAL_SD_STATE_RESET                  = ((uint32_t)0x00000000U),  /*!< SD not yet initialized or disabled  */
+//   HAL_SD_STATE_READY                  = ((uint32_t)0x00000001U),  /*!< SD initialized and ready for use    */
+//   HAL_SD_STATE_TIMEOUT                = ((uint32_t)0x00000002U),  /*!< SD Timeout state                    */
+//   HAL_SD_STATE_BUSY                   = ((uint32_t)0x00000003U),  /*!< SD process ongoing                  */
+//   HAL_SD_STATE_PROGRAMMING            = ((uint32_t)0x00000004U),  /*!< SD Programming State                */
+//   HAL_SD_STATE_RECEIVING              = ((uint32_t)0x00000005U),  /*!< SD Receiving State                  */
+//   HAL_SD_STATE_TRANSFER               = ((uint32_t)0x00000006U),  /*!< SD Transfert State                  */
+//   HAL_SD_STATE_ERROR   
+
+HAL_SD_StateTypeDef sd_state(){
+    return HAL_SD_GetState(&hsd);
+}
+
+
+bool sd_write(uint32_t address, uint8_t * data, uint8_t nblocks){
 
     HAL_StatusTypeDef status = HAL_OK;
 
@@ -586,16 +602,16 @@ bool sd_write(uint32_t address, uint8_t * data){
     // if (status == HAL_OK){
     //     status = HAL_SD_WriteBlocks_DMA(&hsd, data, address, 1);
     // }
-    status = HAL_SD_WriteBlocks(&hsd, data, address, 1, 150);
+    status = HAL_SD_WriteBlocks(&hsd, data, address, nblocks, 150);
 
-    if (status != HAL_OK) printf("status2 = %d\n", status);
+    // if (status != HAL_OK ) printf("wstatus2 = %d %08X\n", status, hsd.ErrorCode);
 
     
 
     return status == HAL_OK;
 }
 
-bool sd_read(uint32_t address, uint8_t * data){
+bool sd_read(uint32_t address, uint8_t * data, uint8_t nblocks){
 
     // if (hsd.State == )
 
@@ -612,9 +628,9 @@ bool sd_read(uint32_t address, uint8_t * data){
     //     status = HAL_SD_ReadBlocks_DMA(&hsd, data, address, 1);
     //     if (status != HAL_OK) printf("status2 = %d\n", status);
     // }
-    status = HAL_SD_ReadBlocks(&hsd, data, address, 1, 150);
+    status = HAL_SD_ReadBlocks(&hsd, data, address, nblocks, 150);
 
-    if (status != HAL_OK) printf("status2 = %d\n", status);
+    // if (status != HAL_OK) printf("rstatus2 = %d %08X\n", status, hsd.ErrorCode);
 
 
     return status == HAL_OK;

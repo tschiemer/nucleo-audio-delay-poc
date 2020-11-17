@@ -16,10 +16,16 @@ void HAL_SD_MspDeInit(SD_HandleTypeDef *hsd);
 HAL_StatusTypeDef sd_init();
 void sd_deinit();
 
-void sd_stat();
+void sd_info();
 
-bool sd_write(uint32_t address, uint8_t * data);
-bool sd_read(uint32_t address, uint8_t * data);
+HAL_SD_StateTypeDef sd_state();
+
+inline bool sd_ready(){
+    return sd_state() == HAL_SD_STATE_READY;
+}
+
+bool sd_write(uint32_t address, uint8_t * data, uint8_t nblocks);
+bool sd_read(uint32_t address, uint8_t * data, uint8_t nblocks);
 
 void sd_erase(uint32_t from, uint32_t to);
 
