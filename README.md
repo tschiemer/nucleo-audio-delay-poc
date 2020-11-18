@@ -109,12 +109,32 @@ For more: https://forum.allaboutcircuits.com/threads/removing-dc-offset-from-a-s
 https://www.allaboutcircuits.com/technical-articles/dac-output-circuitry-for-an-arbitrary-waveform-generator/
 
 
+pin assignment
+----------------
+NUCLEO-L476RG
+
+connector | pin | function
+--- | --- | ---
+CN7 | 1 / PC10 | D2 (sdio)
+ | 2 / PC11 | D3 (sdio)
+ | 3 / PC12 | CLK (sdio)
+ | 4 / PD2 | CMD (sdio)
+CN10 | 1 / PC9 | D1 (sdio)
+ | 2 / PC8 | D2 (sdio)
+CN8 | 1 / PA0 | ADC
+ | 3 / PA4 | DAC
+
+
+SD card:
+ - https://www.sparkfun.com/products/12941
+ - https://support.keith-koep.com/service/doku.php/service/hardware/appnote/connectsdcard
+
+AD/DA: see above
+
 further references
 ----------------
 
 - https://github.com/stevstrong/Audio-sample
 - https://github.com/frisnit/STM32L476-radar
 - https://github.com/akospasztor/stm32-bootloader/blob/master/projects/STM32L496-CustomHw/include/bsp_driver_sd.h
-- https://www.sparkfun.com/products/12941
 - http://ugweb.cs.ualberta.ca/~c274/resources/hardware/SDcards/SD_SDIO_specsv1.pdf
-- https://support.keith-koep.com/service/doku.php/service/hardware/appnote/connectsdcard
