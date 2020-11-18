@@ -1,6 +1,15 @@
-longplay (digital) audio delay/looper (proof of concept)
+(longplay) (digital) audio delay/looper (proof of concept)
 =============================================
 
+even if there are solid commercial solutions for the
+plausible use cases, the aim here is to create a
+working low-budget basis that can be customized for
+special needs. (also, the cheaper commercial solutions
+seem to have a delay/loop time or channel count that is
+not satisfactory)
+
+also consider this a proof of concept for using stm32
+for simple audio effect units..
 
 basic architecture
 -----------------------------
@@ -31,6 +40,11 @@ max time limit of 10.666.. ms per read/write operation.
 furthermore 48kB / sec / channel means a required
 storage space of 48kB * 60 = 2.81... MB / minute /
 channel or ~164.79... MB / hour / channel.
+
+microcontrollers have quite the memory restrictions thus making (longer)
+storage of audio data impossible. SD cards offer themselves as
+a cheap and accessible way to provide the memory capacity needed
+(and could even be used as recorders).
 
 the basic SPI interface of SD cards requires 7-10ms on
 average; as tested on a nucleo-
@@ -93,3 +107,14 @@ STM32s often have two (buffered) DACs if they have any, so outputting a differen
 For more: https://forum.allaboutcircuits.com/threads/removing-dc-offset-from-a-signal.65288/
 
 https://www.allaboutcircuits.com/technical-articles/dac-output-circuitry-for-an-arbitrary-waveform-generator/
+
+
+further references
+----------------
+
+- https://github.com/stevstrong/Audio-sample
+- https://github.com/frisnit/STM32L476-radar
+- https://github.com/akospasztor/stm32-bootloader/blob/master/projects/STM32L496-CustomHw/include/bsp_driver_sd.h
+- https://www.sparkfun.com/products/12941
+- http://ugweb.cs.ualberta.ca/~c274/resources/hardware/SDcards/SD_SDIO_specsv1.pdf
+- https://support.keith-koep.com/service/doku.php/service/hardware/appnote/connectsdcard
