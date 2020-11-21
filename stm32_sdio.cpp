@@ -200,13 +200,31 @@ void HAL_SD_MspInit(SD_HandleTypeDef *hsd)
 //         (##) Call the function HAL_RCCEx_PeriphCLKConfig with RCC_PERIPHCLK_SDMMC1 for
 //         PeriphClockSelection and select SDMMC1 clock source (MSI, main PLL or PLLSAI1)
 
+
     RCC_PeriphCLKInitTypeDef RCC_PeriphClkInit;
 
     HAL_RCCEx_GetPeriphCLKConfig(&RCC_PeriphClkInit);
 
     RCC_PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_SDMMC1;
     RCC_PeriphClkInit.Sdmmc1ClockSelection = RCC_SDMMC1CLKSOURCE_MSI;//RCC_SDMMC1CLKSOURCE_PLLSAI1;//RCC_SDMMC1CLKSOURCE_MSI;
-    // RCC_PeriphClkInit.PLLSAI1.PLLSAI1Source = RCC_PLLSOURCE_HSI;
+
+    // printf("src = %d\n", RCC_PeriphClkInit.PLLSAI1.PLLSAI1Source);
+    // printf("m = %d\n", RCC_PeriphClkInit.PLLSAI1.PLLSAI1M);
+    // printf("n = %d\n", RCC_PeriphClkInit.PLLSAI1.PLLSAI1N);
+    // printf("p = %d\n", RCC_PeriphClkInit.PLLSAI1.PLLSAI1P);
+    // printf("q = %d\n", RCC_PeriphClkInit.PLLSAI1.PLLSAI1Q);
+    // printf("r = %d\n", RCC_PeriphClkInit.PLLSAI1.PLLSAI1R);
+    // printf("clkout = %d\n", RCC_PeriphClkInit.PLLSAI1.PLLSAI1ClockOut);
+
+//   RCC_PeriphClkInit.Sdmmc1ClockSelection = RCC_SDMMC1CLKSOURCE_PLLSAI1;
+//   RCC_PeriphClkInit.PLLSAI1.PLLSAI1Source = RCC_PLLSOURCE_HSE;
+//   RCC_PeriphClkInit.PLLSAI1.PLLSAI1M = 1;
+//   RCC_PeriphClkInit.PLLSAI1.PLLSAI1N = 12;
+//   RCC_PeriphClkInit.PLLSAI1.PLLSAI1P = RCC_PLLP_DIV7;
+//   RCC_PeriphClkInit.PLLSAI1.PLLSAI1Q = RCC_PLLQ_DIV2;
+//   RCC_PeriphClkInit.PLLSAI1.PLLSAI1R = RCC_PLLR_DIV2;
+//   RCC_PeriphClkInit.PLLSAI1.PLLSAI1ClockOut = RCC_PLLSAI1_48M2CLK;
+    // RCC_PeriphClkInit.PLLSAI1.PLLSAI1Source = RCC_PLLSOURCE_MSI;
     // RCC_PeriphClkInit.PLLSAI1.PLLSAI1M = 1;
     // RCC_PeriphClkInit.PLLSAI1.PLLSAI1N = 12;
     // RCC_PeriphClkInit.PLLSAI1.PLLSAI1P = RCC_PLLP_DIV7;
@@ -234,6 +252,8 @@ void HAL_SD_MspInit(SD_HandleTypeDef *hsd)
 
     check_error(HAL_RCCEx_PeriphCLKConfig(&RCC_PeriphClkInit), "init: clk");
 
+
+    printf("sdmmc1 freq = %d\n", HAL_RCCEx_GetPeriphCLKFreq(RCC_PERIPHCLK_SDMMC1));
 
 //         (##) Enable the SDMMC interface clock using __HAL_RCC_SDMMC1_CLK_ENABLE();
 

@@ -18,7 +18,7 @@
 
 
 
-#define SAMPLERATE_HZ       (48000>>0)
+#define SAMPLERATE_HZ       (96000>>1)
 
 #define ADC_BIAS            687
 #define ADC_DIFFERENTIAL    false
@@ -28,17 +28,25 @@
 
 #define DELAY_MAX_MSEC      1000
 
-Timer stopwatch;
+// Timer stopwatch;
 
+// InterruptIn cd(PA_9, PullUp);
 DigitalOut led(LED1);
 
 using namespace std::chrono;
 
 
-InterruptIn cd(PA_9, PullUp);
+
+typedef enum {
+    DelayStep_none,
+    DelayStep_write,
+    DelayStep_read
+} DelayStep_t;
 
 struct {
     uint32_t nblocks;
+
+    // DelayStep_t step;
 
     volatile uint32_t inblock;       // next input block to write (on SD)
     volatile int8_t in[2][512];     // input buffers
@@ -54,7 +62,7 @@ struct {
 } sDelay;
 
 
-volatile bool sd_busy = false;
+// volatile bool sd_busy = false;
 
 void Error_Handler(void){
     printf("Error\n");
@@ -106,7 +114,7 @@ inline void delay_push(int32_t sample){
         sDelay.inb = (sDelay.inb + 1) % 2;
 
         if (sDelay.infull){
-            led = !led;
+            // led = !led;
             // while(1);
         }
 
@@ -131,12 +139,12 @@ inline int32_t delay_pull(){
         sDelay.outi = 0;
         sDelay.outb = (sDelay.outb + 1) % 2;
 
-        if (sDelay.outempty){
-        //     led = 1;
+        // if (sDelay.outempty){
+        // //     led = 1;
 
-            led = !led;
-        //     while(1);
-        }
+        //     led = !led;
+        // //     while(1);
+        // }
 
         sDelay.outempty = true;
     }
@@ -145,46 +153,32 @@ inline int32_t delay_pull(){
 }
 
 void delay_loop(){
-    if (sd_busy == true){
-        return;
-    }
+    // if (sd_busy == true){
+    //     return;
+    // }
     if (sd_ready() == false){
         return;
     }
 
-    
-    if (sDelay.infull){
 
-        // if (sDelay.inblock == 0){
-        //     printf("i ");
-        //     for(int i = 0; i < 4; i++){
-        //         printf("%d ", sDelay.in[(sDelay.inb + 1) % 2][i]);
-        //     }
-        //     printf(" / ");
-        //     for(int i = 0; i < 4; i++){
-        //         printf("%d ", sDelay.in[(sDelay.inb + 1) % 2][128 + i]);
-        //     }
-        //     printf("\n");
-        // }
-        // while(1);
-        stopwatch.reset();
-        stopwatch.start();
+    // static bool dirin = true;
+    
+    if (sDelay.infull){//} && dirin){
+
+        //stopwatch.reset();
+        //stopwatch.start();
         if (!sd_write(sDelay.inblock, (uint8_t*)sDelay.in[(sDelay.inb + 1) % 2], 1)){
         //  if (BSP_SD_WriteBlocks((uint8_t*)sDelay.in[(sDelay.inb + 1) % 2], sDelay.inblock, 1, SD_DATATIMEOUT) != SD_TRANSFER_OK){
         //if (BSP_SD_WriteBlocks_DMA((uint8_t*)&sDelay.in[(sDelay.inb + 1) % 2][0], sDelay.inblock, 1) != SD_TRANSFER_OK){
-            stopwatch.stop();
+          //  stopwatch.stop();
             return;
         }
-        stopwatch.stop();
+        // stopwatch.stop();
 
         // printf("w %d\n", stopwatch)//
 
         // sd_busy = true;
         sDelay.infull = false;
-
-        // printf("b\n");
-
-        // sd_write(sDelay.inblock, (uint8_t*)sDelay.in[(sDelay.inb + 1) % 2]);
 
         sDelay.inblock = (sDelay.inblock + 1) % sDelay.nblocks;
 
@@ -192,20 +186,7 @@ void delay_loop(){
 
         return;
     }
-    else if (sDelay.outempty){
-        // return;
-    // else {
-        // if (sDelay.outblock == 1){
-        //     printf("o ");
-        //     for(int i = 0; i < 4; i++){
-        //         printf("%d ", sDelay.out[sDelay.outb][i]);
-        //     }
-        //     printf(" / ");
-        //     for(int i = 0; i < 4; i++){
-        //         printf("%d ", sDelay.out[sDelay.outb][128 + i]);
-        //     }
-        //     printf("\n");
-        // }
+    else if (sDelay.outempty){//} && !dirin){
 
         if (!sd_read(sDelay.outblock, (uint8_t*)sDelay.out[(sDelay.outb + 1) % 2], 1)){
         // if (BSP_SD_ReadBlocks((uint8_t*)sDelay.out[(sDelay.outb + 1) % 2], sDelay.outblock, 1, SD_DATATIMEOUT) != SD_TRANSFER_OK){
@@ -213,21 +194,16 @@ void delay_loop(){
             return;
         }
 
+        //stopwatch.stop();
+        // if (5000 < duration_cast<microseconds>(stopwatch.elapsed_time()).count())
+        {
+          //  printf("%llu\n", duration_cast<microseconds>(stopwatch.elapsed_time()).count(), sDelay.inblock, sDelay.outblock);
+        }
         // sd_busy = true;
         sDelay.outempty = false;
 
-        // sd_read(sDelay.outblock, (uint8_t*)sDelay.out[(sDelay.outb + 1) % 2]);
-
-
         sDelay.outblock = (sDelay.outblock + 1) % sDelay.nblocks;
-
-        // printf(" %d\n", sDelay.outblock);
-
     }
-    // else {
-    //     return;
-    // }
-    // printf("io %d %d\n", sDelay.inblock, sDelay.outblock);
 }
 
 void clock_init(){
@@ -259,7 +235,11 @@ void clock_init(){
     printf("pclk2 = %d\n", pclk2);
 }
 
-int32_t sample;
+volatile int32_t sample;
+volatile int32_t samplewet;
+
+volatile uint32_t samplecnt = 0;
+
 // called at roughly SAMPLERATE_HZ
 // ATTENTION: interrupt context
 void audiotimer6_callback(){
@@ -268,12 +248,14 @@ void audiotimer6_callback(){
 
     delay_push(sample);
 
-    int32_t wet = delay_pull();
+    int32_t samplewet = delay_pull();
 
-    int32_t out = (sample + wet) / 2;
+    int32_t out = (sample + samplewet) / 2;
 
 
     dac_write(out);
+
+    samplecnt ++;
 
     // if (sDelay.inblock < sDelay.outblock && sDelay.inblock + 5 < sDelay.outblock){
     //     led = 1;
@@ -291,15 +273,15 @@ void audiotimer6_callback(){
 //     // led = true;
 // }
 
-void BSP_SD_WriteCpltCallback(void){
-    sd_busy = false;
-    // led = !led;
-}
-void BSP_SD_ReadCpltCallback(void){
-    sd_busy = false;
-    // led = !led;
-    // led = 1;
-}
+// void BSP_SD_WriteCpltCallback(void){
+//     sd_busy = false;
+//     // led = !led;
+// }
+// void BSP_SD_ReadCpltCallback(void){
+//     sd_busy = false;
+//     // led = !led;
+//     // led = 1;
+// }
 
 // main() runs in its own thread in the OS
 int main()
@@ -314,113 +296,6 @@ int main()
 
     wait_us(1000);
 
-    // uint16_t block[1024];
-    // uint8_t *u8 = (uint8_t*)block;
-    // for(int i = 0; i < 512; i++){
-    //     block[i] = i;
-    // }
-
-    // // sd_busy = true;
-    // // int s = BSP_SD_WriteBlocks((uint32_t*)block, 0, 1, SD_DATATIMEOUT);
-    // int s = 1;
-    
-    // s = sd_write(0, u8, 1);
-
-    // printf("status = %d\n", s);
-
-    // // while(!s);
-
-    // // led = 1;
-    // // // while(sd_busy);
-
-    // printf("written\n");
-
-    // // led = 0;
-
-    // memset(block, 0, sizeof(block));
-
-    // wait_us(1000);
-
-    // // // sd_busy = true;
-    // // s = BSP_SD_ReadBlocks((uint32_t*)block, 0, 1, SD_DATATIMEOUT);
-    // s = sd_read(0, (uint8_t*)&block[0], 1);
-    
-
-    // printf("status = %d\n", s);
-    // while(!s);
-
-    // // // while(sd_busy);
-    // // *u16 = (uint16_t*)block;
-    // for(int i = 0; i < 512; i++){
-    //     printf("%d ", block[i]);
-    // }
-    // printf("\n");
-
-    // while(1);
-
-    // int I = 1;
-
-    // for (int i = 0; i < I; i++){
-    //     printf("1 %d\n", i);
-
-    //     // while(BSP_SD_WriteBlocks((uint32_t*)block, i, 1, SD_DATATIMEOUT) == false){
-    //     busy = true;
-    //     while(busy == true){
-    //         BSP_SD_WriteBlocks_DMA((uint32_t*)block, i, 1);
-
-    //         printf(".\n");
-    //         wait_us(1000000);
-    //     }
-
-    //     wait_us(1000);
-    // }
-
-    
-    // for (int i = 0; i < I; i++){
-
-    //     memset(block, 0, sizeof(block));
-
-    //     printf("2 %d\n", i);
-    //     busy = true;
-    //     // while(BSP_SD_ReadBlocks((uint32_t*)block, i, 1, SD_DATATIMEOUT) == false){
-    //     int s = BSP_SD_ReadBlocks_DMA((uint32_t*)block, i, 1);
-
-    //     printf("state = %d\n", s);
-    //     while(busy == true){
-    //         // int s = BSP_SD_ReadBlocks_DMA((uint32_t*)block, i+1, 1);
-
-    //         printf(".\n");
-    //         wait_us(1000000);
-    //     }
-
-    //     wait_us(1000000);
-    //     for(int i = 0; i < 6; i++){
-    //         printf("%02X ", block[i]);
-    //     }
-    //     printf("\n");
-    // }
-
-
-//     wait_us(1000);
-
-//     memcpy(block, "byebye", 7);
-
-//     printf("1\n");
-//     while(sd_write(0, block) == false){
-//         wait_us(1000000);
-//     }
-// wait_us(1000);
-
-//     memset(block, 0, sizeof(block));
-
-//     printf("2\n");
-//     while(sd_read(0, block) == false){
-//         wait_us(1000000);
-//     }
-
-//     printf("%s\n", block);
-    // printf("3\n");
-
     audiotimer6_init(SAMPLERATE_HZ);
 
     adc_init(ADC_BIAS, ADC_DIFFERENTIAL);
@@ -431,8 +306,15 @@ int main()
 
     audiotimer6_start();
 
+    
     while(1){
         delay_loop();
+
+        // if (samplecnt > SAMPLERATE_HZ){
+        //     samplecnt = 0;
+
+        //     printf("%d %d\n", sample, samplewet);
+        // }
     }
 
 }
