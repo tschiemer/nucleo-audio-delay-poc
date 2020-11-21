@@ -125,14 +125,15 @@ NUCLEO-L476RG
 connector | pin | function
 --- | --- | ---
 CN7 | 1 / PC10 | D2 (sdio)
- | 2 / PC11 | D3 (sdio)
- | 3 / PC12 | CLK (sdio)
- | 4 / PD2 | CMD (sdio)
+| | 2 / PC11 | D3 (sdio)
+| | 3 / PC12 | CLK (sdio)
+| | 4 / PD2 | CMD (sdio)
 CN10 | 1 / PC9 | D1 (sdio)
- | 2 / PC8 | D2 (sdio)
+| | 2 / PC8 | D2 (sdio)
 CN8 | 1 / PA0 | ADC
- | 3 / PA4 | DAC
+| | 3 / PA4 | DAC
 
+Ground and 3v3 are self speaking.
 
 SD card:
  - https://www.sparkfun.com/products/12941
