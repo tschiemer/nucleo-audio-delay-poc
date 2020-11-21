@@ -1,4 +1,4 @@
-(longplay) (digital) audio delay/looper (proof of concept)
+(digital) audio delay/looper (proof of concept)
 =============================================
 
 even if there are solid commercial solutions for the
@@ -10,6 +10,15 @@ not satisfactory)
 
 also consider this a proof of concept for using stm32
 for simple audio effect units..
+
+also see file `sample.wav`: it somewhat works, but is rather noisy.
+testsetup (and interfacing circuits, which obviously could be better):
+- computer audio jack connected directly to mixer (A&H PA12) line in
+- bal (aux) line to ADC / controller (neg and ground connected)
+- DAC / controller to mixer line in  (neg and ground connected)
+- mixer PFL to headphones
+
+![Fancy controller photo](https://github.com/tschiemer/nucleo-audio-delay-poc/raw/master/img.jpg "Controller")
 
 basic architecture
 -----------------------------
